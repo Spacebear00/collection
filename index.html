@@ -167,6 +167,51 @@ table.cards tr:hover td{background:#11161f}
 #big .gcard.on .gtake{color:#7fe0ae;border-color:#3f7d5c}
 #big .gwhat{padding:6px 8px;font-size:11px;line-height:1.45;color:#8fa3b8}
 #big .gwhat b{display:block;color:#c3cfd9;font-weight:600;font-size:11.5px}
+
+/* --- on a phone ------------------------------------------------------------------------
+   A trade list is read on a phone as often as at a desk. Three things break there and none
+   of them are about looking pretty: the controls run off the edge because the row never
+   wrapped, the rail is half a screen to scroll past before a single card, and a panel
+   pinned to the right of a 375px screen hangs off it. */
+/* --- making the pictures awkward to take ------------------------------------------------
+   Not a lock, and nothing here pretends to be one. A browser has to fetch a picture to
+   show it, so the file is already on the machine before any of this runs. What this does
+   stop is the two easy gestures: right-click-and-save at a desk, and press-and-hold on a
+   phone, which is how it would actually happen. View-source, developer tools, a screenshot
+   or simply opening the image address still work, and cannot be prevented from here. */
+img{-webkit-touch-callout:none;-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
+.rail-toggle{display:none}
+@media (max-width: 760px){
+  body{display:block}
+  aside{position:static;height:auto;border-right:0;border-bottom:1px solid #1b2430}
+  /* The rail folds away. The search box stays: it is the thing somebody reaches for. */
+  .rail-lbl, aside .list{display:none}
+  .rail-toggle{display:block;width:100%;text-align:left;background:none;border:0;padding:6px 0;
+    color:#8fa3b8;font:inherit;font-size:10.5px;font-weight:700;letter-spacing:.6px;
+    text-transform:uppercase;cursor:pointer}
+  .rail-toggle::after{content:' \25be';display:inline-block}
+  .rail-toggle[aria-expanded="true"]::after{content:' \25b4'}
+  body.rail-open aside .list{display:flex;max-height:44vh;overflow-y:auto}
+  main{height:auto}
+  /* The row wraps instead of running off, and the menus share what is there. */
+  .top{flex-wrap:wrap;padding:10px 12px}
+  .top h1{flex:1 1 100%}
+  .count{flex:1 1 100%;order:-1}
+  .top select, .pick>button{flex:1 1 auto;min-width:0;margin-left:0}
+  .pick{margin-left:0;position:static}
+  /* A sheet across the bottom rather than a panel pinned to an edge that is not there. */
+  .pick .panel{position:fixed;left:8px;right:8px;top:auto;bottom:8px;width:auto;
+    max-height:70vh;overflow-y:auto;z-index:50}
+  .grid{padding:12px 12px 90px}
+  /* Room for a thumb, and the art big enough to judge. */
+  #big{padding:8px}
+  #big .gallery{width:100%;max-height:92vh}
+  #big .gset{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  #big .gtake{width:34px;height:34px;font-size:17px}
+  .tile .add{width:32px;height:32px}
+  #bag{flex-wrap:wrap;gap:6px}
+  #bag button{flex:1 1 auto}
+}
 /* Asking for a card. The button sits on the picture so a whole tile is not a target — the
    tile already means "look closer", and the two must not be the same gesture. */
 .add{position:absolute;left:6px;top:6px;width:26px;height:26px;border-radius:7px;
@@ -197,7 +242,10 @@ main{padding-bottom:0}
   <div class="sub" id="sub"></div>
   <input id="q" type="search" placeholder="Name, type or rules text&#8230;"
          autocomplete="off" spellcheck="false">
-  <div class="lbl">Browse</div>
+  <!-- On a phone the rail is half a screen to scroll past before a single card. It folds
+       there, and the button is not drawn at all on a screen wide enough to hold both. -->
+  <button type="button" id="railToggle" class="lbl rail-toggle" aria-expanded="false">Browse</button>
+  <div class="lbl rail-lbl">Browse</div>
   <div class="list" id="rail"></div>
 </aside>
 <main>
@@ -316,7 +364,13 @@ function buildRail() {
     var b = document.createElement('button');
     b.className = 'item' + (view.kind === kind && view.key === key ? ' on' : '');
     b.innerHTML = '<span class="n">' + esc(label) + '</span><span class="c">' + count.toLocaleString() + '</span>';
-    b.onclick = function () { view.kind = kind; view.key = key; drawn = 0; render(); buildRail(); };
+    b.onclick = function () {
+      view.kind = kind; view.key = key; drawn = 0; render(); buildRail();
+      /* On a phone the rail was opened to get somewhere; having got there, close it. */
+      document.body.classList.remove('rail-open');
+      var rt = document.getElementById('railToggle');
+      if (rt) rt.setAttribute('aria-expanded', 'false');
+    };
     rail.appendChild(b);
   };
   var total = 0;
@@ -815,6 +869,23 @@ document.getElementById('q').oninput = function () { view.q = this.value; drawn 
 document.getElementById('mode').onchange = function () { view.mode = this.value; drawn = 0; render(); };
 document.getElementById('sort').onchange = function () { view.sort = this.value; view.by = null; drawn = 0; render(); };
 document.getElementById('group').onchange = function () { view.group = this.value; drawn = 0; render(); };
+/* The rail folds on a phone. Choosing something closes it again, because the reason it
+   was opened was to get to the cards. */
+/* The two easy ways to take a picture: the menu at a desk, the long press on a phone.
+   Both are refused. Neither is a lock — the file is already on the machine, because a
+   browser had to fetch it to show it — and view-source, developer tools, a screenshot or
+   opening the address still work. It stops the casual gesture and nothing more. */
+document.addEventListener('contextmenu', function (e) {
+  if (e.target && e.target.tagName === 'IMG') e.preventDefault();
+});
+document.addEventListener('dragstart', function (e) {
+  if (e.target && e.target.tagName === 'IMG') e.preventDefault();
+});
+var railToggle = document.getElementById('railToggle');
+if (railToggle) railToggle.onclick = function () {
+  var open = document.body.classList.toggle('rail-open');
+  railToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+};
 
 /* --- choosing sets -------------------------------------------------------------------
    Every set in the file, with how many copies are from it, biggest first so the ones
