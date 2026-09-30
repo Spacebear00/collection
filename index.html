@@ -71,8 +71,22 @@ select{height:30px;border-radius:7px;border:1px solid #2a3646;background:#0b0e13
 .print-row.on .add{color:#7fe0ae;border-color:#3f7d5c}
 .print-what{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .print-n{flex:none;color:#55677a;font-family:ui-monospace,monospace;font-size:11px}
+/* grid-auto-rows:min-content, and it is not a refinement — without it the rows collapse.
+
+   An auto row takes its height from what is in it, which is the whole point of auto,
+   except that what is in it is a flex column whose height comes from a picture sized by
+   width:100% and an aspect ratio. Asked how tall that is before the column width is
+   settled, the browser answers zero, and every row in the grid was laid out at 2px — the
+   tile's two borders and nothing else. The tiles themselves were the right size and simply
+   overflowed, so four hundred cards were stacked nearly on top of one another, fourteen
+   pixels apart, each showing a sliver of the one behind it and none showing its name. The
+   grid looked like a stack of cards seen edge-on, which is exactly what it was.
+
+   min-content asks the question again once the columns are known, and gets the real answer.
+   It has to stay. */
 .grid{flex:1;min-height:0;overflow-y:auto;padding:14px 16px 40px;
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;align-content:start}
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;
+  align-content:start;grid-auto-rows:min-content}
 .tile{background:#0f141c;border:1px solid #1b2430;border-radius:10px;overflow:hidden;
   display:flex;flex-direction:column;cursor:zoom-in;align-self:start}
 .tile:hover{border-color:#2a3646}
@@ -92,7 +106,20 @@ select{height:30px;border-radius:7px;border:1px solid #2a3646;background:#0b0e13
    Images load as they are scrolled to, and with nothing reserved a tile is only as tall as
    its name until its art arrives — so the grid was full of stubs that jumped to full size
    under the reader. The placeholder holds the space; the picture still decides the shape. */
-.shot img{width:100%;height:auto;display:block;aspect-ratio:auto 5/7}
+.shot img{width:100%;height:auto;display:block;aspect-ratio:auto 5/7;position:relative;z-index:1}
+/* The name, readable while the picture is still on its way.
+
+   The art is the slow part — full-size scans shrunk into a tile two hundred pixels wide —
+   and until it lands the tile was a blank rectangle with its name below the fold. Two
+   hundred blank rectangles is a collection somebody clicks blindly, and the name was
+   already here the whole time: it comes with the page, not over the network. It sits
+   underneath the picture and the picture is opaque, so it is gone the moment there is
+   something better to look at, with no script and nothing to undo. */
+.waiting{position:absolute;inset:0;z-index:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;padding:10px;text-align:center;
+  font-size:12.5px;line-height:1.35;color:#9fb0c0}
+.waiting .fs{display:block;margin-top:6px;font-size:11px;color:#55677a;
+  font-family:ui-monospace,Menlo,monospace}
 /* No picture — offline, or a card with no art on file. Card-shaped, because there is no
    image here to give the tile a height. */
 .fallback{aspect-ratio:5/7;display:flex;flex-direction:column;align-items:center;
@@ -161,7 +188,10 @@ table.cards tr:hover td{background:#11161f}
 #big .gcard:hover{border-color:#3a4a5e}
 #big .gcard.on{border-color:#3f7d5c;box-shadow:0 0 0 1px #3f7d5c}
 #big .gshot{position:relative;background:#11161f;line-height:0}
-#big .gshot img{width:100%;height:auto;display:block;aspect-ratio:auto 5/7;max-width:none;max-height:none;border-radius:0}
+#big .gshot img{width:100%;height:auto;display:block;aspect-ratio:auto 5/7;max-width:none;max-height:none;border-radius:0;position:relative;z-index:1}
+/* And in the gallery, for the same reason: this is the screen for telling one printing from
+   another, so a grid of blanks is the one thing it must not be while the art arrives. */
+#big .gshot .waiting{font-size:13px}
 #big .gfall{aspect-ratio:5/7;display:flex;align-items:center;justify-content:center;padding:10px;
   color:#8fa3b8;font-size:12px;text-align:center}
 #big .gqty{position:absolute;left:6px;top:6px;background:rgba(11,14,19,.86);border:1px solid #2a3646;
@@ -580,6 +610,15 @@ function openCard(card) {
       var shot = document.createElement('div');
       shot.className = 'gshot';
       if (part.img) {
+        /* The name underneath, readable until the picture covers it. */
+        var hold = document.createElement('span');
+        hold.className = 'waiting';
+        hold.textContent = part.n;
+        var where = document.createElement('span');
+        where.className = 'fs';
+        where.textContent = part.s + ' ' + part.no;
+        hold.appendChild(where);
+        shot.appendChild(hold);
         var im = document.createElement('img');
         im.loading = 'lazy';
         im.alt = part.n;
@@ -730,7 +769,9 @@ function render(append) {
     var t = document.createElement('div');
     t.className = 'tile';
     var shot = c.img
-      ? '<img loading="lazy" alt="' + esc(c.n) + '" src="' + esc(c.img) + '">'
+      /* The name first, so it is readable until the picture covers it. */
+      ? '<span class="waiting">' + esc(c.n) + '<span class="fs">' + esc(c.s) + ' ' + esc(c.no) + '</span></span>'
+        + '<img loading="lazy" alt="' + esc(c.n) + '" src="' + esc(c.img) + '">'
       : '<div class="fallback">' + esc(c.n) + '<span class="fs">' + esc(c.s) + ' ' + esc(c.no) + '</span></div>';
     if (want[keyOf(c)]) t.className = 'tile want';
     /* A card held in several printings is not one thing to add — which one would it be?
