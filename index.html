@@ -56,6 +56,21 @@ select{height:30px;border-radius:7px;border:1px solid #2a3646;background:#0b0e13
 .pick .opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pick .opt .c{flex:none;color:#55677a;font-size:11px}
 .pick .empty{color:#55677a;font-size:12px;padding:6px 4px}
+/* A card held in several printings: the count replaces the add button, because "this
+   card" is not a thing anybody can put in an envelope. */
+.prints{position:absolute;right:6px;bottom:6px;background:rgba(11,14,19,.86);
+  border:1px solid #2a3646;border-radius:999px;padding:1px 7px;font-size:10.5px;color:#8fa3b8}
+.rules{margin:8px 0;padding:7px 9px;border-radius:7px;background:#0b0e13;border:1px solid #1b2430;
+  font-size:11.5px;line-height:1.5;color:#c3cfd9;white-space:pre-wrap;max-height:150px;overflow-y:auto}
+.prints-list{margin-top:8px;display:flex;flex-direction:column;gap:2px;max-height:280px;overflow-y:auto}
+.print-row{display:flex;align-items:center;gap:8px;padding:4px 5px;border-radius:6px;
+  background:#0b0e13;border:1px solid #1b2430;font-size:11.5px;color:#c3cfd9}
+.print-row.on{border-color:#3f7d5c}
+.print-row .add{position:static;flex:none;width:22px;height:22px;border-radius:6px;
+  border:1px solid #2a3646;background:#0f141c;color:#8fa3b8;font:inherit;font-size:12px;cursor:pointer}
+.print-row.on .add{color:#7fe0ae;border-color:#3f7d5c}
+.print-what{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.print-n{flex:none;color:#55677a;font-family:ui-monospace,monospace;font-size:11px}
 .grid{flex:1;min-height:0;overflow-y:auto;padding:14px 16px 40px;
   display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;align-content:start}
 .tile{background:#0f141c;border:1px solid #1b2430;border-radius:10px;overflow:hidden;
@@ -153,7 +168,8 @@ main{padding-bottom:0}
 <aside class="rail">
   <div class="brand">AVAILABLE FOR TRADE</div>
   <div class="sub" id="sub"></div>
-  <input id="q" type="search" placeholder="Search&#8230;" autocomplete="off" spellcheck="false">
+  <input id="q" type="search" placeholder="Name, type or rules text&#8230;"
+         autocomplete="off" spellcheck="false">
   <div class="lbl">Browse</div>
   <div class="list" id="rail"></div>
 </aside>
@@ -181,6 +197,10 @@ main{padding-bottom:0}
         <div class="opts" id="setOpts"></div>
       </div>
     </div>
+    <select id="group" title="Whether the printings of a card are shown together">
+      <option value="card">One card, all printings</option>
+      <option value="print">Every printing separately</option>
+    </select>
     <select id="sort">
       
       <option value="name">A to Z</option>
@@ -230,6 +250,8 @@ var cmpBox = function (a, b) {
 
 var view = { kind: 'all', key: '', q: '', sort: DATA.locations ? 'box' : 'name',
              mode: 'grid', by: null, dir: 1,
+             /* 'card' gathers a card's printings together; 'print' lists every stack. */
+             group: 'card',
              /* Chosen sets. Empty means every set, which is not the same as none. */
              sets: [] };
 
@@ -317,6 +339,55 @@ function buildRail() {
 /** The set a card is filed under, as the picker and the filter both name it. */
 function setOf(c) { return c.sn || c.s || 'Other'; }
 
+/**
+ * One entry per card rather than one per stack.
+ *
+ * A collection of this size holds the same card in several printings and often several
+ * boxes: eighty-one separate Islands is a true list and a useless one. Gathered by name,
+ * a card is one thing you can find, with its printings underneath it — which is how
+ * somebody looking for a card thinks about it.
+ *
+ * The representative is the dearest printing, because that is the one worth showing a
+ * picture of. Every stack stays reachable in parts, and nothing is summed that should not
+ * be: the copies add up, the printings are counted, and the rest is the representative's
+ * own.
+ */
+function byCard(list) {
+  var by = {}, out = [];
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i];
+    var k = c.n.toLowerCase();
+    var g = by[k];
+    if (!g) {
+      /* A shallow copy, so changing the group never reaches back into the stack. */
+      g = by[k] = {};
+      for (var f in c) if (Object.prototype.hasOwnProperty.call(c, f)) g[f] = c[f];
+      g.q = 0; g.parts = []; g.group = true;
+      out.push(g);
+    }
+    g.q += c.q;
+    g.parts.push(c);
+    /* Keep the dearest one's picture and printing as the face of the group. */
+    if (worth(c) > worth(g) || (!g.img && c.img)) {
+      for (var f2 in c) {
+        if (f2 === 'q' || f2 === 'parts' || f2 === 'group') continue;
+        if (Object.prototype.hasOwnProperty.call(c, f2)) g[f2] = c[f2];
+      }
+    }
+  }
+  /* How many DIFFERENT printings, not how many stacks: two boxes of the same printing is
+     one printing somebody has to choose between, which is none. */
+  for (var j = 0; j < out.length; j++) {
+    var seen = {}, n = 0;
+    for (var p = 0; p < out[j].parts.length; p++) {
+      var key = out[j].parts[p].s + ' ' + out[j].parts[p].no + ' ' + (out[j].parts[p].f || '');
+      if (!seen[key]) { seen[key] = 1; n++; }
+    }
+    out[j].prints = n;
+  }
+  return out;
+}
+
 function shown() {
   var q = view.q.trim().toLowerCase();
   /* An index rather than indexOf per card: two hundred sets against ten thousand cards
@@ -334,19 +405,91 @@ function shown() {
     if (view.kind === 'portfolio' && (c.p || 'Unfiled') !== view.key) return false;
     if (view.kind === 'box' && (c.b || 'Not filed anywhere yet') !== view.key) return false;
     if (!q) return true;
-    /* The rules text as well, so 'draw a card' and 'flying' find what they should. It is
-       held once per wording and pointed at, so this is a lookup rather than a copy. */
+    /* The card, not the set it is in. Sets are chosen in the picker beside this box, and
+       having both answer to the same typing made them fight: "fin" meant Final Fantasy to
+       one and every card with those three letters to the other. So this searches what is
+       ON a card — its name, its type line, its rules text, its rarity — and the set filter
+       is the set filter. The rules text is held once per wording and pointed at, so this
+       is a lookup rather than a copy. */
     var rules = (DATA.text && c.x != null) ? DATA.text[c.x] : '';
-    return (c.n + ' ' + c.s + ' ' + c.no + ' ' + c.sn + ' ' + c.t + ' ' + c.g + ' '
-            + (c.r || '') + ' ' + (c.ln || '') + ' ' + (c.lg || '') + ' ' + (c.fd || '')
-            + ' ' + (c.b || '') + ' ' + rules)
+    return (c.n + ' ' + c.no + ' ' + c.t + ' ' + (c.r || '') + ' ' + rules)
       .toLowerCase().indexOf(q) >= 0;
   });
+}
+
+/**
+ * One card, opened: the picture, and every printing of it that is here.
+ *
+ * A card gathered from several printings has no single set, number or condition to state,
+ * and picking one to show would be inventing an answer. So each printing is listed with
+ * its own details and its own button — which is also the only honest way to add one of
+ * them to a list, since "this card" is not a thing anybody can put in an envelope.
+ */
+function openCard(card) {
+  var parts = card.parts || [card];
+  var big = document.getElementById('big');
+  var img = document.getElementById('bigimg');
+  img.src = card.img || '';
+  img.style.display = card.img ? '' : 'none';
+
+  var side = document.getElementById('bigside');
+  side.innerHTML = '';
+  var head = document.createElement('div');
+  head.innerHTML = '<b>' + esc(card.n) + '</b>' + (card.t ? esc(card.t) + '<br>' : '') +
+    card.q + (card.q === 1 ? ' copy' : ' copies') +
+    (parts.length > 1 ? ' across ' + card.prints + ' printings' : '') +
+    (DATA.cards.some(function (x) { return x.g !== card.g; }) ? '<br>' + esc(card.g) : '');
+  side.appendChild(head);
+
+  var rules = (DATA.text && card.x != null) ? DATA.text[card.x] : '';
+  if (rules) {
+    var say = document.createElement('div');
+    say.className = 'rules';
+    say.textContent = rules;
+    side.appendChild(say);
+  }
+
+  var box = document.createElement('div');
+  box.className = 'prints-list';
+  for (var i = 0; i < parts.length; i++) {
+    (function (part) {
+      var row = document.createElement('div');
+      row.className = 'print-row' + (want[keyOf(part)] ? ' on' : '');
+      var add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'add';
+      add.textContent = want[keyOf(part)] ? '\u2713' : '+';
+      add.title = 'Add this printing to your list';
+      add.onclick = function (e) {
+        e.stopPropagation();
+        toggleWant(part);
+        add.textContent = want[keyOf(part)] ? '\u2713' : '+';
+        row.className = 'print-row' + (want[keyOf(part)] ? ' on' : '');
+      };
+      var said = document.createElement('span');
+      said.className = 'print-what';
+      said.textContent = (part.sn || part.s) + ' \u00b7 ' + part.no +
+        (part.f ? ' \u00b7 ' + part.f : '') +
+        (part.c && part.c !== 'NM' ? ' \u00b7 ' + part.c : '') +
+        (part.ln ? ' \u00b7 ' + part.ln : '') +
+        (part.b ? ' \u00b7 ' + part.b : '');
+      var n = document.createElement('span');
+      n.className = 'print-n';
+      n.textContent = part.q + (DATA.prices && part.u ? ' \u00b7 ' + money(part.u) : '');
+      row.appendChild(add); row.appendChild(said); row.appendChild(n);
+      box.appendChild(row);
+    })(parts[i]);
+  }
+  side.appendChild(box);
+  big.className = 'on';
 }
 
 function render() {
   var out = document.getElementById('out');
   var list = shown().slice();
+  /* Gathered by card before sorting, so "most copies first" counts a card's copies and
+     not one stack's, and A to Z has one entry per name. */
+  if (view.group === 'card') list = byCard(list);
   list.sort(function (a, b) {
     if (view.by) {
       var x = a[view.by], y = b[view.by];
@@ -378,11 +521,17 @@ function render() {
   });
 
   document.getElementById('head').textContent = view.kind === 'all' ? 'Everything' : view.key;
-  var copies = 0, cents = 0;
-  for (var i = 0; i < list.length; i++) { copies += list[i].q; cents += worth(list[i]); }
+  var copies = 0, cents = 0, prints = 0;
+  for (var i = 0; i < list.length; i++) {
+    copies += list[i].q;
+    cents += worth(list[i]);
+    if (list[i].prints) prints += list[i].prints;
+  }
   document.getElementById('count').textContent =
     copies.toLocaleString() + (copies === 1 ? ' copy' : ' copies') +
     ' \u00b7 ' + list.length.toLocaleString() + (list.length === 1 ? ' card' : ' cards') +
+    /* Said only when it tells you something: with one printing each it is the same number. */
+    (prints > list.length ? ' \u00b7 ' + prints.toLocaleString() + ' printings' : '') +
     (DATA.prices && cents ? ' \u00b7 ' + money(cents) : '');
 
   out.innerHTML = '';
@@ -414,10 +563,16 @@ function render() {
       ? '<img loading="lazy" alt="' + esc(c.n) + '" src="' + esc(c.img) + '">'
       : '<div class="fallback">' + esc(c.n) + '<span class="fs">' + esc(c.s) + ' ' + esc(c.no) + '</span></div>';
     if (want[keyOf(c)]) t.className = 'tile want';
+    /* A card held in several printings is not one thing to add — which one would it be?
+       So the button becomes the count, and pressing the tile opens the printings to
+       choose from. With a single printing there is nothing to choose and it adds. */
+    var many = c.prints > 1;
     t.innerHTML =
       '<div class="shot">' + shot + (c.q > 1 ? '<span class="qty">' + c.q + '\u00d7</span>' : '') +
-      '<button class="add" type="button" title="Add to your list">'
-        + (want[keyOf(c)] ? '\u2713' : '+') + '</button>' + '</div>' +
+      (many
+        ? '<span class="prints">' + c.prints + ' printings</span>'
+        : '<button class="add" type="button" title="Add to your list">'
+            + (want[keyOf(c)] ? '\u2713' : '+') + '</button>') + '</div>' +
       '<div class="body"><div class="nm">' + esc(c.n) + '</div><div class="meta">' +
       '<span class="tag">' + esc(c.s) + ' ' + esc(c.no) + '</span>' +
       (c.f ? '<span class="tag foil">' + esc(c.f) + '</span>' : '') +
@@ -429,22 +584,7 @@ function render() {
     (function (card) {
       var plus = t.querySelector('.add');
       if (plus) plus.onclick = function (e) { e.stopPropagation(); toggleWant(card); };
-      t.onclick = function () {
-        var big = document.getElementById('big');
-        var img = document.getElementById('bigimg');
-        img.src = card.img || '';
-        img.style.display = card.img ? '' : 'none';
-        document.getElementById('bigside').innerHTML =
-          '<b>' + esc(card.n) + '</b>' +
-          esc(card.sn || card.s) + ' \u00b7 ' + esc(card.no) + '<br>' +
-          (card.t ? esc(card.t) + '<br>' : '') +
-          esc(card.c) + (card.f ? ' \u00b7 ' + esc(card.f) : '') + '<br>' +
-          card.q + (card.q === 1 ? ' copy' : ' copies') +
-          (card.b ? ' in ' + esc(card.b) : '') + (card.o != null ? ' (#' + card.o + ')' : '') +
-          (DATA.cards.some(function (x) { return x.g !== card.g; }) ? '<br>' + esc(card.g) : '') +
-          (DATA.prices && card.u ? '<br>' + money(card.u) + ' each' : '');
-        big.className = 'on';
-      };
+      t.onclick = function () { openCard(card); };
     })(c);
     out.appendChild(t);
   }
@@ -619,6 +759,7 @@ document.getElementById('bagMail').onclick = function () {
 document.getElementById('q').oninput = function () { view.q = this.value; drawn = 0; render(); };
 document.getElementById('mode').onchange = function () { view.mode = this.value; drawn = 0; render(); };
 document.getElementById('sort').onchange = function () { view.sort = this.value; view.by = null; drawn = 0; render(); };
+document.getElementById('group').onchange = function () { view.group = this.value; drawn = 0; render(); };
 
 /* --- choosing sets -------------------------------------------------------------------
    Every set in the file, with how many copies are from it, biggest first so the ones
