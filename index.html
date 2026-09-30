@@ -130,9 +130,13 @@ table.cards th{position:sticky;top:0;background:#0f141c;text-align:left;padding:
   border-bottom:1px solid #2a3646;color:#8496a8;font-weight:600;cursor:pointer;white-space:nowrap}
 table.cards td{padding:4px 6px;border-bottom:1px solid #161d27}
 table.cards tr:hover td{background:#11161f}
-#more{display:block;margin:14px auto 30px;padding:8px 16px;border-radius:8px;
-  border:1px solid #2a3646;background:#0f141c;color:#e6ecf2;font:13px system-ui;cursor:pointer}
-#more:hover{border-color:#45c8b8;color:#45c8b8}
+/* Spans the whole grid. Left as a plain grid item it was laid out as one tile-sized
+   cell among the pictures and read as another card, which is why a list that had more
+   to show looked finished. */
+#more{grid-column:1/-1;display:flex;justify-content:center;padding:18px 0 34px}
+#more button{min-height:38px;padding:8px 18px;border-radius:8px;
+  border:1px solid #2a3646;background:#0f141c;color:#96a3b2;font:13px system-ui;cursor:pointer}
+#more button:hover{border-color:#45c8b8;color:#45c8b8}
 #big{position:fixed;inset:0;background:#000000e6;display:none;align-items:center;
   justify-content:center;z-index:9;padding:20px;cursor:zoom-out}
 #big.on{display:flex}
@@ -173,16 +177,16 @@ table.cards tr:hover td{background:#11161f}
    of them are about looking pretty: the controls run off the edge because the row never
    wrapped, the rail is half a screen to scroll past before a single card, and a panel
    pinned to the right of a 375px screen hangs off it. */
-/* --- making the pictures awkward to take ------------------------------------------------
-   Not a lock, and nothing here pretends to be one. A browser has to fetch a picture to
-   show it, so the file is already on the machine before any of this runs. What this does
-   stop is the two easy gestures: right-click-and-save at a desk, and press-and-hold on a
-   phone, which is how it would actually happen. View-source, developer tools, a screenshot
-   or simply opening the image address still work, and cannot be prevented from here. */
-img{-webkit-touch-callout:none;-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
 .rail-toggle{display:none}
 @media (max-width: 760px){
-  body{display:block}
+  /* The page itself scrolls here, not a box inside it. Saying display:block alone was not
+     enough: height:100vh and overflow:hidden survived it, so the body stayed one screen
+     tall and clipped everything under it, while the grid — no longer inside a height-bound
+     column — had nothing to scroll within either. The cards were all laid out and all
+     painted away: the page scrolled, into blankness. The three have to come off together. */
+  body{display:block;height:auto;overflow:visible}
+  main{height:auto;overflow:visible}
+  .grid{overflow:visible;flex:none;min-height:0}
   aside{position:static;height:auto;border-right:0;border-bottom:1px solid #1b2430}
   /* The rail folds away. The search box stays: it is the thing somebody reaches for. */
   .rail-lbl, aside .list{display:none}
@@ -192,7 +196,6 @@ img{-webkit-touch-callout:none;-webkit-user-drag:none;user-select:none;-webkit-u
   .rail-toggle::after{content:' \25be';display:inline-block}
   .rail-toggle[aria-expanded="true"]::after{content:' \25b4'}
   body.rail-open aside .list{display:flex;max-height:44vh;overflow-y:auto}
-  main{height:auto}
   /* The row wraps instead of running off, and the menus share what is there. */
   .top{flex-wrap:wrap;padding:10px 12px}
   .top h1{flex:1 1 100%}
@@ -233,8 +236,11 @@ img{-webkit-touch-callout:none;-webkit-user-drag:none;user-select:none;-webkit-u
 #bag button:hover{border-color:#45c8b8}
 #bag .grow{flex:1}
 main{padding-bottom:0}
-@media(max-width:720px){body{grid-template-columns:1fr;height:auto;overflow:auto}
-  .rail{border-right:none;border-bottom:1px solid #1b2430}.list{max-height:210px}}
+/* A second narrow-screen block used to sit here, left from before the phone layout was
+   written. It released the body's height and overflow, which is the only reason a narrow
+   phone showed anything past the first screen — and it stopped at 720px, so a window
+   between 721 and 760 got the phone layout without the release and scrolled into blank
+   space. Folded into the block above, where the rest of the phone layout lives. */
 </style></head>
 <body>
 <aside class="rail">
@@ -443,11 +449,31 @@ function byCard(list) {
       /* A shallow copy, so changing the group never reaches back into the stack. */
       g = by[k] = {};
       for (var f in c) if (Object.prototype.hasOwnProperty.call(c, f)) g[f] = c[f];
-      g.q = 0; g.parts = []; g.group = true;
+      g.q = 0; g.parts = []; g.seen = {}; g.group = true;
       out.push(g);
     }
     g.q += c.q;
-    g.parts.push(c);
+    /* One entry per PRINTING, not per stack. Two boxes of the same printing, or the same
+       printing filed twice at different conditions, is one card to look at — galleried
+       twice it reads as two different things to choose between, which is the one thing the
+       gallery exists to tell you. They fold together and their copies add up. */
+    var pk = c.s + ' ' + c.no + ' ' + (c.f || '') + ' ' + (c.lg || '');
+    var was = g.seen[pk];
+    if (was) {
+      was.q += c.q;
+      /* The better-kept one speaks for the printing, and keeps its own picture. */
+      if (rankCondition(c.c) > rankCondition(was.c)) { was.c = c.c; if (c.img) was.img = c.img; }
+      if (!was.img && c.img) was.img = c.img;
+      /* On a page that says where things are kept, folding must not lose the second box —
+         the copies were added together and the place they are in is how they get found. */
+      if (c.b && was.b && (' ' + was.b + ', ').indexOf(' ' + c.b + ',') === -1) was.b += ', ' + c.b;
+      else if (c.b && !was.b) was.b = c.b;
+    } else {
+      var part = {};
+      for (var f3 in c) if (Object.prototype.hasOwnProperty.call(c, f3)) part[f3] = c[f3];
+      g.seen[pk] = part;
+      g.parts.push(part);
+    }
     /* Keep the dearest one's picture and printing as the face of the group. */
     if (worth(c) > worth(g) || (!g.img && c.img)) {
       for (var f2 in c) {
@@ -457,16 +483,22 @@ function byCard(list) {
     }
   }
   /* How many DIFFERENT printings, not how many stacks: two boxes of the same printing is
-     one printing somebody has to choose between, which is none. */
+     one printing somebody has to choose between, which is none. The parts are already
+     folded to one each, so this is their number — and it cannot drift from what the
+     gallery shows, which is the mistake it made when the two were counted separately. */
   for (var j = 0; j < out.length; j++) {
-    var seen = {}, n = 0;
-    for (var p = 0; p < out[j].parts.length; p++) {
-      var key = out[j].parts[p].s + ' ' + out[j].parts[p].no + ' ' + (out[j].parts[p].f || '');
-      if (!seen[key]) { seen[key] = 1; n++; }
-    }
-    out[j].prints = n;
+    out[j].prints = out[j].parts.length;
+    delete out[j].seen;
   }
   return out;
+}
+
+/* Worst to best, for deciding which copy of a printing speaks for it. Anything unrecorded
+   ranks below everything recorded rather than above it: an unknown condition is not NM. */
+function rankCondition(c) {
+  var order = ['DMG', 'HP', 'MP', 'LP', 'NM'];
+  var at = order.indexOf(String(c || '').toUpperCase());
+  return at;
 }
 
 function shown() {
@@ -606,7 +638,10 @@ function openCard(card) {
   big.className = 'on';
 }
 
-function render() {
+/* Drawn from scratch, or grown by one more page onto what is already on screen.
+   Growing appends rather than redrawing: rebuilding six thousand tiles on every scroll
+   step would stutter, and it would throw away every picture already fetched. */
+function render(append) {
   var out = document.getElementById('out');
   var list = shown().slice();
   /* Gathered by card before sorting, so "most copies first" counts a card's copies and
@@ -656,28 +691,41 @@ function render() {
     (prints > list.length ? ' \u00b7 ' + prints.toLocaleString() + ' printings' : '') +
     (DATA.prices && cents ? ' \u00b7 ' + money(cents) : '');
 
-  out.innerHTML = '';
-  if (!list.length) {
-    var e = document.createElement('div'); e.className = 'empty';
-    e.textContent = view.q ? 'Nothing matching \u201c' + view.q + '\u201d.' : 'Nothing here.';
-    out.appendChild(e);
-    return;
-  }
+  /* Drawn a page at a time rather than stopping dead. A hard cut made the big games
+     unreadable: six thousand Magic cards behind a wall that told you to search, when the
+     whole point is browsing what somebody has.
 
-  /* Drawn a page at a time rather than stopping dead. A hard cut at four hundred made the
-     big games unreadable: six thousand Magic cards behind a wall that told you to search,
-     when the whole point is browsing what somebody has.
-
-     Pictures are heavy, so they come in smaller pages than rows do. Both grow on demand,
-     and neither is capped — press for more until there is no more. */
+     Pictures are heavy, so they come in smaller pages than rows do. Neither is capped —
+     the next page arrives as the bottom of this one comes into view. */
   var page = view.mode === 'grid' ? 200 : 1000;
-  var cap = Math.min(list.length, drawn || page);
+  var from = append ? drawn : 0;
+  var cap = Math.min(list.length, append ? drawn + page : (drawn || page));
   out.className = view.mode === 'grid' ? 'grid' : 'grid rows';
 
-  if (view.mode === 'table') { drawTable(list, cap); addMore(list, cap); return; }
-  if (view.mode === 'list') { drawRows(list, cap); addMore(list, cap); return; }
+  if (append) {
+    /* Only the footer goes; everything above it stays exactly where the reader left it. */
+    var old = document.getElementById('more');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+  } else {
+    out.innerHTML = '';
+    /* Back to the top when the list itself changes, and only then. Left where it was, a
+       narrowed search lands mid-list with the foot of a much shorter list already in view,
+       and the page fetches three more batches nobody asked to see. Ticking a card redraws
+       too and must NOT move — drawn is still set in that case, and the list is the same. */
+    if (!drawn) { out.scrollTop = 0; if (window.scrollY) window.scrollTo(0, 0); }
+    if (!list.length) {
+      var e = document.createElement('div'); e.className = 'empty';
+      e.textContent = view.q ? 'Nothing matching \u201c' + view.q + '\u201d.' : 'Nothing here.';
+      out.appendChild(e);
+      return;
+    }
+  }
 
-  for (var j = 0; j < cap; j++) {
+  /* The table writes itself whole, so it redraws either way; only its cap grows. */
+  if (view.mode === 'table') { drawTable(list, cap); addMore(list, cap); return; }
+  if (view.mode === 'list') { drawRows(list, from, cap); addMore(list, cap); return; }
+
+  for (var j = from; j < cap; j++) {
     var c = list[j];
     var t = document.createElement('div');
     t.className = 'tile';
@@ -718,24 +766,86 @@ function render() {
    a variable of the same name silently replaced it. */
 var drawn = 0;
 
+/* Watches the foot of the list and fetches the next page as it comes into view.
+   Kept as one observer for the life of the page, re-pointed at each new footer. */
+var watcher = null;
+
+/* The foot of the list: what is left, and the next page on its way.
+
+   This used to be a bare button appended to #out — which is a grid — so it was laid out as
+   one tile-sized cell among two hundred pictures, and read as just another card. A list of
+   six thousand that shows two hundred and gives no visible way to go on is a list that
+   looks finished. So the footer spans the full width, and it does not wait to be pressed:
+   the next page loads as the bottom approaches. The button stays underneath for anyone who
+   would rather press it, and for a browser with no observer. */
 function addMore(list, cap) {
   drawn = cap;
-  if (list.length <= cap) return;
+  /* Dropped along with the footer it was watching, rather than kept and re-pointed: which
+     box does the scrolling depends on the width, so a window dragged across the phone
+     breakpoint would otherwise leave it measuring against a box that no longer moves.
+     Dropped before the early return too, or narrowing a search down to one page leaves it
+     watching a footer that has been thrown away. */
+  if (watcher) { watcher.disconnect(); watcher = null; }
+
+  var left = list.length - cap;
+  if (left <= 0) return;
+
+  var out = document.getElementById('out');
+  var foot = document.createElement('div');
+  foot.id = 'more';
   var b = document.createElement('button');
-  b.id = 'more';
   b.type = 'button';
-  b.textContent = 'Show more \u00b7 ' + (list.length - cap).toLocaleString() + ' not shown yet';
-  b.onclick = function () {
-    drawn = cap + (view.mode === 'grid' ? 200 : 1000);
-    render();
-  };
-  document.getElementById('out').appendChild(b);
+  b.textContent = 'Show more \u00b7 ' + left.toLocaleString() + ' still to come';
+  b.onclick = grow;
+  foot.appendChild(b);
+  out.appendChild(foot);
+
+  if (!window.IntersectionObserver) return;
+  /* On a wide screen the grid is its own scroller and the page does not move; on a narrow
+     one the page scrolls and the grid does not. The margin that gives the next page its
+     head start is only a head start if it is measured against whichever one is moving. */
+  var scroller = out.scrollHeight > out.clientHeight + 1 ? out : null;
+  watcher = new window.IntersectionObserver(function (entries) {
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].isIntersecting) { grow(); return; }
+    }
+  }, { root: scroller, rootMargin: '600px 0px' });
+  watcher.observe(foot);
 }
 
-/* A row: everything a trade needs and nothing that needs a picture. */
-function drawRows(list, cap) {
+function grow() {
+  /* Stop watching the footer that is about to be removed, or its removal is itself
+     reported and the page grows twice for one scroll. */
+  if (watcher) { watcher.disconnect(); watcher = null; }
+  render(true);
+}
+
+/* Is the foot of the list close enough to be worth drawing the next page?
+
+   Asked on the scroll as well as by the observer, because the observer is the cheap path
+   rather than a reliable one: it delivers only while the page is being painted, it roots on
+   one box that a change of width can stop being the scroller, and it is absent altogether
+   in an old browser. Two rectangles cost nothing beside drawing two hundred cards. */
+function nearTheEnd() {
+  var foot = document.getElementById('more');
+  if (!foot) return false;
   var out = document.getElementById('out');
-  for (var i = 0; i < cap; i++) {
+  /* Whichever box is doing the scrolling is the one the foot has to be near. */
+  var edge = out.scrollHeight > out.clientHeight + 1
+    ? out.getBoundingClientRect().bottom
+    : (window.innerHeight || document.documentElement.clientHeight);
+  return foot.getBoundingClientRect().top - edge < 600;
+}
+
+/* Checked straight through rather than deferred to a frame: a background tab is given no
+   frames, and this has to settle the same way whether or not anybody is watching. Growing
+   moves the foot a whole page down, so one scroll cannot draw two. */
+function onScrolled() { if (nearTheEnd()) grow(); }
+
+/* A row: everything a trade needs and nothing that needs a picture. */
+function drawRows(list, from, cap) {
+  var out = document.getElementById('out');
+  for (var i = from; i < cap; i++) {
     (function (c) {
       var r = document.createElement('div');
       r.className = 'row' + (want[keyOf(c)] ? ' want' : '');
@@ -871,16 +981,6 @@ document.getElementById('sort').onchange = function () { view.sort = this.value;
 document.getElementById('group').onchange = function () { view.group = this.value; drawn = 0; render(); };
 /* The rail folds on a phone. Choosing something closes it again, because the reason it
    was opened was to get to the cards. */
-/* The two easy ways to take a picture: the menu at a desk, the long press on a phone.
-   Both are refused. Neither is a lock — the file is already on the machine, because a
-   browser had to fetch it to show it — and view-source, developer tools, a screenshot or
-   opening the address still work. It stops the casual gesture and nothing more. */
-document.addEventListener('contextmenu', function (e) {
-  if (e.target && e.target.tagName === 'IMG') e.preventDefault();
-});
-document.addEventListener('dragstart', function (e) {
-  if (e.target && e.target.tagName === 'IMG') e.preventDefault();
-});
 var railToggle = document.getElementById('railToggle');
 if (railToggle) railToggle.onclick = function () {
   var open = document.body.classList.toggle('rail-open');
@@ -1009,6 +1109,10 @@ document.getElementById('sub').textContent =
 if (!DATA.contact || !DATA.contact.length) document.getElementById('bagMail').style.display = 'none';
 buildRail();
 paintBag();
+/* Both boxes, because which one scrolls depends on the width and can change under a
+   resize. Passive: this never cancels a scroll, and saying so keeps it smooth. */
+window.addEventListener('scroll', onScrolled, { passive: true });
+document.getElementById('out').addEventListener('scroll', onScrolled, { passive: true });
 render();
 </script>
 </body></html>
