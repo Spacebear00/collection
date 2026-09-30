@@ -140,6 +140,33 @@ table.cards tr:hover td{background:#11161f}
 #big img{max-width:min(92vw,520px);max-height:84vh;border-radius:12px}
 #big .side{max-width:280px;font-size:13px;line-height:1.5}
 #big .side b{display:block;font-size:16px;margin-bottom:6px}
+/* Opening a card shows its printings as PICTURES, because that is what tells them apart.
+   A gallery of art is how anybody decides between a retro frame and a borderless; a list
+   of set codes is not, however carefully it is written. */
+/* A width, not just a maximum: inside the centring flex panel it would otherwise shrink
+   to its content, and the grid inside would collapse to a single column. */
+#big .gallery{display:flex;flex-direction:column;gap:12px;max-height:88vh;
+  width:min(96vw,1080px);overflow-y:auto;cursor:default;padding:4px}
+#big .ghead{color:#e6ecf2;font-size:15px;font-weight:600}
+#big .ghead span{display:block;font-size:12px;font-weight:400;color:#8fa3b8;margin-top:2px}
+#big .grules{font-size:11.5px;line-height:1.5;color:#c3cfd9;background:#0f141c;
+  border:1px solid #1b2430;border-radius:8px;padding:8px 10px;white-space:pre-wrap;max-width:620px}
+#big .gset{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+#big .gcard{background:#0f141c;border:1px solid #1b2430;border-radius:10px;overflow:hidden;
+  display:flex;flex-direction:column;cursor:pointer;text-align:left}
+#big .gcard:hover{border-color:#3a4a5e}
+#big .gcard.on{border-color:#3f7d5c;box-shadow:0 0 0 1px #3f7d5c}
+#big .gshot{position:relative;background:#11161f;line-height:0}
+#big .gshot img{width:100%;height:auto;display:block;aspect-ratio:auto 5/7;max-width:none;max-height:none;border-radius:0}
+#big .gfall{aspect-ratio:5/7;display:flex;align-items:center;justify-content:center;padding:10px;
+  color:#8fa3b8;font-size:12px;text-align:center}
+#big .gqty{position:absolute;left:6px;top:6px;background:rgba(11,14,19,.86);border:1px solid #2a3646;
+  border-radius:999px;padding:1px 7px;font-size:10.5px;color:#c3cfd9}
+#big .gtake{position:absolute;right:6px;top:6px;width:26px;height:26px;border-radius:8px;
+  border:1px solid #2a3646;background:rgba(11,14,19,.86);color:#8fa3b8;font-size:14px;cursor:pointer}
+#big .gcard.on .gtake{color:#7fe0ae;border-color:#3f7d5c}
+#big .gwhat{padding:6px 8px;font-size:11px;line-height:1.45;color:#8fa3b8}
+#big .gwhat b{display:block;color:#c3cfd9;font-weight:600;font-size:11.5px}
 /* Asking for a card. The button sits on the picture so a whole tile is not a target — the
    tile already means "look closer", and the two must not be the same gesture. */
 .add{position:absolute;left:6px;top:6px;width:26px;height:26px;border-radius:7px;
@@ -418,69 +445,110 @@ function shown() {
 }
 
 /**
- * One card, opened: the picture, and every printing of it that is here.
+ * One card, opened: every printing of it that is here, as pictures.
  *
  * A card gathered from several printings has no single set, number or condition to state,
- * and picking one to show would be inventing an answer. So each printing is listed with
- * its own details and its own button — which is also the only honest way to add one of
- * them to a list, since "this card" is not a thing anybody can put in an envelope.
+ * and picking one to show would be inventing an answer. Nor is a list of set codes how
+ * anybody chooses between a retro frame and a borderless — the art is what tells them
+ * apart. So opening a card shows the art, large enough to judge, and pressing one asks
+ * for that printing.
+ *
+ * The whole tile is the target. At this size the picture IS the button, and hunting for a
+ * small one after zooming in to look closely is the wrong gesture.
  */
 function openCard(card) {
   var parts = card.parts || [card];
   var big = document.getElementById('big');
-  var img = document.getElementById('bigimg');
-  img.src = card.img || '';
-  img.style.display = card.img ? '' : 'none';
+  var panel = big.querySelector('.panel');
+  panel.innerHTML = '';
 
-  var side = document.getElementById('bigside');
-  side.innerHTML = '';
+  var wrap = document.createElement('div');
+  wrap.className = 'gallery';
+  /* The overlay closes on a click; inside it, a click is choosing a printing. */
+  wrap.onclick = function (e) { e.stopPropagation(); };
+
   var head = document.createElement('div');
-  head.innerHTML = '<b>' + esc(card.n) + '</b>' + (card.t ? esc(card.t) + '<br>' : '') +
-    card.q + (card.q === 1 ? ' copy' : ' copies') +
-    (parts.length > 1 ? ' across ' + card.prints + ' printings' : '') +
-    (DATA.cards.some(function (x) { return x.g !== card.g; }) ? '<br>' + esc(card.g) : '');
-  side.appendChild(head);
+  head.className = 'ghead';
+  head.textContent = card.n;
+  var sub = document.createElement('span');
+  sub.textContent = card.q + (card.q === 1 ? ' copy' : ' copies') +
+    (card.prints > 1 ? ' · ' + card.prints + ' printings' : '') +
+    (card.t ? ' · ' + card.t : '');
+  head.appendChild(sub);
+  wrap.appendChild(head);
 
   var rules = (DATA.text && card.x != null) ? DATA.text[card.x] : '';
   if (rules) {
     var say = document.createElement('div');
-    say.className = 'rules';
+    say.className = 'grules';
     say.textContent = rules;
-    side.appendChild(say);
+    wrap.appendChild(say);
   }
 
-  var box = document.createElement('div');
-  box.className = 'prints-list';
+  var set = document.createElement('div');
+  set.className = 'gset';
   for (var i = 0; i < parts.length; i++) {
     (function (part) {
-      var row = document.createElement('div');
-      row.className = 'print-row' + (want[keyOf(part)] ? ' on' : '');
-      var add = document.createElement('button');
-      add.type = 'button';
-      add.className = 'add';
-      add.textContent = want[keyOf(part)] ? '\u2713' : '+';
-      add.title = 'Add this printing to your list';
-      add.onclick = function (e) {
+      var tile = document.createElement('div');
+      tile.className = 'gcard' + (want[keyOf(part)] ? ' on' : '');
+      var shot = document.createElement('div');
+      shot.className = 'gshot';
+      if (part.img) {
+        var im = document.createElement('img');
+        im.loading = 'lazy';
+        im.alt = part.n;
+        im.src = part.img;
+        shot.appendChild(im);
+      } else {
+        var fall = document.createElement('div');
+        fall.className = 'gfall';
+        fall.textContent = part.n + ' · ' + part.s + ' ' + part.no;
+        shot.appendChild(fall);
+      }
+      if (part.q > 1) {
+        var qty = document.createElement('span');
+        qty.className = 'gqty';
+        qty.textContent = part.q + '×';
+        shot.appendChild(qty);
+      }
+      var take = document.createElement('button');
+      take.type = 'button';
+      take.className = 'gtake';
+      take.textContent = want[keyOf(part)] ? '✓' : '+';
+      take.title = 'Ask for this printing';
+      shot.appendChild(take);
+      tile.appendChild(shot);
+
+      var what = document.createElement('div');
+      what.className = 'gwhat';
+      var line1 = document.createElement('b');
+      line1.textContent = (part.sn || part.s) + ' · ' + part.no;
+      what.appendChild(line1);
+      var bits = [];
+      if (part.f) bits.push(part.f);
+      if (part.c && part.c !== 'NM') bits.push(part.c);
+      if (part.ln) bits.push(part.ln);
+      if (part.b) bits.push(part.b);
+      if (DATA.prices && part.u) bits.push(money(part.u));
+      what.appendChild(document.createTextNode(bits.join(' · ')));
+      tile.appendChild(what);
+
+      /* The whole tile picks it. At this size the picture IS the button, and hunting
+         for a small target after zooming in to look closely is the wrong gesture. */
+      var pick = function (e) {
         e.stopPropagation();
         toggleWant(part);
-        add.textContent = want[keyOf(part)] ? '\u2713' : '+';
-        row.className = 'print-row' + (want[keyOf(part)] ? ' on' : '');
+        var on = !!want[keyOf(part)];
+        tile.className = 'gcard' + (on ? ' on' : '');
+        take.textContent = on ? '✓' : '+';
       };
-      var said = document.createElement('span');
-      said.className = 'print-what';
-      said.textContent = (part.sn || part.s) + ' \u00b7 ' + part.no +
-        (part.f ? ' \u00b7 ' + part.f : '') +
-        (part.c && part.c !== 'NM' ? ' \u00b7 ' + part.c : '') +
-        (part.ln ? ' \u00b7 ' + part.ln : '') +
-        (part.b ? ' \u00b7 ' + part.b : '');
-      var n = document.createElement('span');
-      n.className = 'print-n';
-      n.textContent = part.q + (DATA.prices && part.u ? ' \u00b7 ' + money(part.u) : '');
-      row.appendChild(add); row.appendChild(said); row.appendChild(n);
-      box.appendChild(row);
+      tile.onclick = pick;
+      take.onclick = pick;
+      set.appendChild(tile);
     })(parts[i]);
   }
-  side.appendChild(box);
+  wrap.appendChild(set);
+  panel.appendChild(wrap);
   big.className = 'on';
 }
 
