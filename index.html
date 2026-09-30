@@ -673,23 +673,10 @@ function drawTable(list, cap) {
   }
 }
 
-/* The enlarged card, shared by every view. */
-function openCard(card) {
-  var big = document.getElementById('big');
-  var img = document.getElementById('bigimg');
-  img.src = card.img || '';
-  img.style.display = card.img ? '' : 'none';
-  document.getElementById('bigside').innerHTML =
-    '<b>' + esc(card.n) + '</b>' +
-    esc(card.sn || card.s) + ' \u00b7 ' + esc(card.no) + '<br>' +
-    (card.t ? esc(card.t) + '<br>' : '') +
-    esc(card.c) + (card.f ? ' \u00b7 ' + esc(card.f) : '') +
-    (card.ln ? ' \u00b7 ' + esc(card.ln) : '') + '<br>' +
-    card.q + (card.q === 1 ? ' copy' : ' copies') +
-    (card.b ? ' in ' + esc(card.b) : '') + (card.o != null ? ' (#' + card.o + ')' : '') +
-    (DATA.prices && card.u ? '<br>' + money(card.u) + ' each' : '');
-  big.className = 'on';
-}
+/* The enlarged card is openCard, defined above with the printings panel. There used to be
+   a second one here that only ever described a single stack; being declared later it won,
+   which is why a card opened from a tile still read as one printing after the tiles had
+   been gathered by card. */
 
 /* --- the interest list ---------------------------------------------------------------
    Held by the card's own identity rather than by its position in a filtered array, because
