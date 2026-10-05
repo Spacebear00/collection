@@ -25,6 +25,13 @@ body{margin:0;background:#0b0e13;color:#e6ecf2;font:14px/1.45 system-ui,-apple-s
    carries a tick as well as the colour — one man in twelve cannot tell red from green,
    and those are two of the five. */
 .item.facet.on{color:#45c8b8;box-shadow:none;background:#11211f}
+/* What is narrowing the list, shown OUTSIDE the drawer so a phone can see it while the
+   drawer is shut — which is almost always. Each one takes itself off. */
+.on-chips{display:flex;flex-wrap:wrap;gap:5px;padding:4px 10px 6px}
+.on-chip{background:#11211f;border:1px solid #2c5e58;border-radius:999px;color:#45c8b8;
+  font:inherit;font-size:11px;padding:4px 9px;cursor:pointer;min-height:28px}
+.on-chip span{color:#6f8f8a;margin-left:2px}
+.on-chip:hover{border-color:#45c8b8;color:#8fe6db}
 /* What else can be typed. Shut by default: somebody who only ever types a card name
    should never have to read it. */
 .how{margin:2px 10px 6px;border-top:1px solid #1b2430;padding-top:6px}
@@ -257,7 +264,15 @@ table.cards tr:hover td{background:#11161f}
     text-transform:uppercase;cursor:pointer}
   .rail-toggle::after{content:' \25be';display:inline-block}
   .rail-toggle[aria-expanded="true"]::after{content:' \25b4'}
-  body.rail-open aside .list{display:flex;max-height:44vh;overflow-y:auto}
+  /* A COLUMN. Saying display:flex alone made it a row, so opening the drawer laid every
+     filter out along one 39px line running off the side of a 375px screen — items at
+     x=197, 388, 513, 806, 1059 — with nowrap and no horizontal scroll to reach them. Every
+     filter was present and none could be touched, which is why the page was still
+     unnavigable on a phone after the filters were added. */
+  body.rail-open aside .list{display:flex;flex-direction:column;
+    max-height:min(62vh,62dvh);overflow-y:auto}
+  /* Room for a thumb: a 27px row is a miss on a phone. */
+  body.rail-open aside .item{min-height:38px;padding:7px 14px}
   /* The row wraps instead of running off, and the menus share what is there. */
   .top{flex-wrap:wrap;padding:10px 12px}
   .top h1{flex:1 1 100%}
@@ -332,7 +347,14 @@ main{padding-bottom:0}
   </details>
   <!-- On a phone the rail is half a screen to scroll past before a single card. It folds
        there, and the button is not drawn at all on a screen wide enough to hold both. -->
-  <button type="button" id="railToggle" class="lbl rail-toggle" aria-expanded="false">Browse</button>
+  <!-- It said "Browse", which reads as navigation, so nobody looked for filters behind it.
+       It now says what is in there and how many are on. -->
+  <button type="button" id="railToggle" class="lbl rail-toggle" aria-expanded="false">Browse &amp; filter</button>
+  <!-- What is currently narrowing the list, shown OUTSIDE the drawer.
+       On a phone the drawer is shut almost all the time, so a filter applied inside it was
+       invisible the moment it took effect: the list got shorter and nothing said why. Each
+       chip takes itself off. -->
+  <div id="onChips" class="on-chips" hidden></div>
   <div class="lbl rail-lbl">Browse</div>
   <div class="list" id="rail"></div>
 </aside>
@@ -509,6 +531,7 @@ function buildRail() {
   }
 
   buildFacets(rail);
+  paintOnChips();
 }
 
 /* --- the facets ------------------------------------------------------------------------
@@ -575,6 +598,55 @@ function buildFacets(rail) {
       rail.appendChild(facetButton(facet, values[v], counts[values[v]]));
     }
   }
+}
+
+/**
+ * What is narrowing the list right now, said where it can be seen.
+ *
+ * On a phone the drawer is shut almost all of the time, so a filter chosen inside it became
+ * invisible the instant it took effect — the list got shorter and nothing on screen said
+ * why, which is worse than having no filters at all. Each chip takes itself off.
+ */
+function paintOnChips() {
+  var box = document.getElementById('onChips');
+  if (!box) return;
+  box.innerHTML = '';
+  var any = false;
+  for (var f = 0; f < FACETS.length; f++) {
+    var facet = FACETS[f];
+    var chosen = view.facets[facet.key] || [];
+    for (var i = 0; i < chosen.length; i++) {
+      any = true;
+      box.appendChild(onChip(facet, chosen[i]));
+    }
+  }
+  if (view.sets.length) {
+    any = true;
+    var sets = view.sets.slice();
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'on-chip';
+    b.innerHTML = esc(sets.length === 1 ? sets[0] : sets.length + ' sets') + ' <span>\u00d7</span>';
+    b.title = 'Stop narrowing by set';
+    b.onclick = function () { view.sets = []; sayChosen(); buildSets(); drawn = 0; render(); buildRail(); };
+    box.appendChild(b);
+  }
+  box.hidden = !any;
+}
+
+function onChip(facet, value) {
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'on-chip';
+  var label = (facet.name && facet.name[value]) || value;
+  b.innerHTML = esc(label) + ' <span>\u00d7</span>';
+  b.title = 'Stop narrowing by ' + label;
+  b.onclick = function () {
+    var at = view.facets[facet.key].indexOf(value);
+    if (at >= 0) view.facets[facet.key].splice(at, 1);
+    drawn = 0; render(); buildRail();
+  };
+  return b;
 }
 
 function facetButton(facet, value, count) {
