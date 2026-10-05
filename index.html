@@ -612,6 +612,23 @@ function paintOnChips() {
   if (!box) return;
   box.innerHTML = '';
   var any = false;
+
+  /* The rail's own choice counts too. Picking Japanese narrows the list exactly as a facet
+     does, but it is navigation rather than a facet, so with the drawer shut it left the
+     same silence: ninety-eight cards and nothing saying why. */
+  if (view.kind !== 'all' && view.key) {
+    any = true;
+    var back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'on-chip';
+    back.innerHTML = esc(view.key) + ' <span>\u00d7</span>';
+    back.title = 'Show everything again';
+    back.onclick = function () {
+      view.kind = 'all'; view.key = ''; drawn = 0; render(); buildRail();
+    };
+    box.appendChild(back);
+  }
+
   for (var f = 0; f < FACETS.length; f++) {
     var facet = FACETS[f];
     var chosen = view.facets[facet.key] || [];
